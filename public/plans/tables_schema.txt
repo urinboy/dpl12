@@ -1,0 +1,345 @@
+erDiagram
+    %% Users va Authentication
+    users {
+        bigint id PK
+        string name
+        string email UK
+        string phone
+        timestamp phone_verified_at
+        string password
+        string avatar
+        text address
+        bigint city_id FK
+        enum role "customer,seller,admin"
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Addresses
+    addresses {
+        bigint id PK
+        bigint user_id FK
+        string title
+        text address
+        bigint city_id FK
+        string district
+        string landmark
+        string phone
+        decimal latitude
+        decimal longitude
+        boolean is_default
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Cities
+    cities {
+        bigint id PK
+        boolean is_active
+        boolean delivery_available
+        decimal delivery_fee
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Languages
+    languages {
+        bigint id PK
+        string code UK
+        string name
+        string native_name
+        boolean is_active
+        boolean is_default
+        int sort_order
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Translations
+    translations {
+        bigint id PK
+        string translatable_type
+        bigint translatable_id
+        string language_code FK
+        string field
+        text value
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Categories
+    categories {
+        bigint id PK
+        bigint parent_id FK
+        string image
+        int sort_order
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Products
+    products {
+        bigint id PK
+        bigint seller_id FK
+        bigint category_id FK
+        decimal price
+        decimal discount_price
+        string unit
+        int stock_quantity
+        int min_order_quantity
+        string sku UK
+        string barcode
+        decimal weight
+        json dimensions
+        boolean is_featured
+        boolean is_active
+        int views_count
+        decimal rating_average
+        int rating_count
+        int rating_1_star
+        int rating_2_star
+        int rating_3_star
+        int rating_4_star
+        int rating_5_star
+        int reviews_count
+        int verified_reviews_count
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Product Images
+    product_images {
+        bigint id PK
+        bigint product_id FK
+        string image_path
+        string alt_text
+        boolean is_primary
+        int sort_order
+        int file_size
+        string mime_type
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Product Variants
+    product_variants {
+        bigint id PK
+        bigint product_id FK
+        string name
+        string sku UK
+        decimal price
+        int stock_quantity
+        decimal weight
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Product Variant Attributes
+    product_variant_attributes {
+        bigint id PK
+        bigint product_variant_id FK
+        string attribute_name
+        string attribute_value
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Shopping Cart
+    carts {
+        bigint id PK
+        bigint user_id FK
+        bigint product_id FK
+        int quantity
+        string session_id
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Wishlist
+    wishlists {
+        bigint id PK
+        bigint user_id FK
+        bigint product_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Orders
+    orders {
+        bigint id PK
+        string order_number UK
+        bigint user_id FK
+        enum status "pending,confirmed,processing,shipped,delivered,cancelled"
+        decimal subtotal
+        decimal delivery_fee
+        decimal discount_amount
+        decimal total_amount
+        enum payment_method "cash,card,transfer"
+        enum payment_status "pending,paid,failed,refunded"
+        json delivery_address
+        bigint delivery_city_id FK
+        date delivery_date
+        string delivery_time_slot
+        text notes
+        text cancellation_reason
+        timestamp confirmed_at
+        timestamp shipped_at
+        timestamp delivered_at
+        timestamp cancelled_at
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Order Items
+    order_items {
+        bigint id PK
+        bigint order_id FK
+        bigint product_id FK
+        string product_name
+        string product_sku
+        int quantity
+        decimal unit_price
+        decimal total_price
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Reviews
+    reviews {
+        bigint id PK
+        bigint user_id FK
+        bigint product_id FK
+        bigint order_id FK
+        int rating
+        text comment
+        json pros
+        json cons
+        boolean is_approved
+        boolean is_verified_purchase
+        timestamp approved_at
+        string admin_comment
+        int helpful_count
+        int not_helpful_count
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Review Images
+    review_images {
+        bigint id PK
+        bigint review_id FK
+        string image_path
+        string original_name
+        int file_size
+        string mime_type
+        int sort_order
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Review Helpfulness
+    review_helpfulness {
+        bigint id PK
+        bigint review_id FK
+        bigint user_id FK
+        boolean is_helpful
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Coupons
+    coupons {
+        bigint id PK
+        string code UK
+        enum type "percentage,fixed"
+        decimal value
+        decimal minimum_amount
+        decimal maximum_discount
+        int usage_limit
+        int used_count
+        timestamp starts_at
+        timestamp expires_at
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Banners
+    banners {
+        bigint id PK
+        string title
+        text description
+        string image
+        string link_url
+        string button_text
+        enum position "hero,sidebar,footer"
+        int sort_order
+        timestamp starts_at
+        timestamp expires_at
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Notifications
+    notifications {
+        bigint id PK
+        bigint user_id FK
+        enum type "order,product,system,promotional"
+        string title
+        text message
+        json data
+        string action_url
+        timestamp read_at
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Settings
+    settings {
+        bigint id PK
+        string key UK
+        text value
+        enum type "string,integer,boolean,float,json"
+        string group
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Relationships
+    users ||--o{ addresses : "has many"
+    users ||--o{ orders : "places"
+    users ||--o{ carts : "has items"
+    users ||--o{ wishlists : "has wishlist"
+    users ||--o{ reviews : "writes"
+    users ||--o{ notifications : "receives"
+    users ||--o{ review_helpfulness : "votes"
+    users ||--o{ products : "sells"
+
+    cities ||--o{ users : "located in"
+    cities ||--o{ addresses : "delivery to"
+    cities ||--o{ orders : "delivered to"
+
+    languages ||--o{ translations : "has translations"
+
+    categories ||--o{ categories : "parent-child"
+    categories ||--o{ products : "contains"
+
+    products ||--o{ product_images : "has images"
+    products ||--o{ product_variants : "has variants"
+    products ||--o{ carts : "added to cart"
+    products ||--o{ wishlists : "added to wishlist"
+    products ||--o{ order_items : "ordered"
+    products ||--o{ reviews : "reviewed"
+
+    product_variants ||--o{ product_variant_attributes : "has attributes"
+
+    orders ||--o{ order_items : "contains"
+
+    reviews ||--o{ review_images : "has images"
+    reviews ||--o{ review_helpfulness : "voted on"
+
+    translations }o--|| languages : "in language"
