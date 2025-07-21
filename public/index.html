@@ -700,6 +700,555 @@
     </div>
 
     <script>
+         // API Configuration
+         const API_BASE_URL = 'https://dompro.itorda.uz/api/v1';
+        let authToken = localStorage.getItem('auth_token');
+        let currentUser = null;
+        let cartCount = 0;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
+            setupEventListeners();
+        });
+
+        async function initializeApp() {
+            if (authToken) {
+                try {
+                    await loadUserProfile();
+                    await loadCartCount();
+                } catch (error) {
+                    authToken = null;
+                    localStorage.removeItem('auth_token');
+                }
+            }
+            await loadCategories();
+            await loadFeaturedProducts();
+        }
+
+        function setupEventListeners() {
+            document.getElementById('searchInput').addEventListener('input', debounce(handleSearch, 300));
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+            document.getElementById('registerForm').addEventListener('submit', handleRegister);
+            document.addEventListener('click', function(e) {
+                if (e.target.classList.contains('modal')) {
+                    closeModal();
+                }
+            });
+        }
+
+        // API Helper Functions
+        async function apiCall(endpoint, options = {}) {
+            const url = `${API_BASE_URL}${endpoint}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || 'API request failed');
+                return data;
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // Authentication Functions
+        async function handleLogin(e) {
+            e.preventDefault();
+            const login = document.getElementById('loginInput').value;
+            const password = document.getElementById('passwordInput').value;
+            try {
+                showLoading('Kirish...');
+                const response = await apiCall('/auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ login, password })
+                });
+                authToken = response.data.token;
+                currentUser = response.data.user;
+                localStorage.setItem('auth_token', authToken);
+                showToast('Muvaffaqiyatli kirildi!', 'success');
+                closeModal();
+                await loadCartCount();
+                hideLoading();
+            } catch (error) {
+                showToast(error.message, 'error');
+                hideLoading();
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const name = document.getElementById('nameInput').value;
+            const email = document.getElementById('emailInput').value;
+            const phone = document.getElementById('phoneInput').value;
+            const password = document.getElementById('newPasswordInput').value;
+            const password_confirmation = document.getElementById('confirmPasswordInput').value;
+            if (password !== password_confirmation) {
+                showToast('Parollar mos kelmaydi!', 'error');
+                return;
+            }
+            try {
+                showLoading('Ro\'yxatdan o\'tish...');
+                const response = await apiCall('/auth/register', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, email, phone, password, password_confirmation })
+                });
+                authToken = response.data.token;
+                currentUser = response.data.user;
+                localStorage.setItem('auth_token', authToken);
+                showToast('Muvaffaqiyatli ro\'yxatdan o\'tildi!', 'success');
+                closeModal();
+                await loadCartCount();
+                hideLoading();
+            } catch (error) {
+                showToast(error.message, 'error');
+                hideLoading();
+            }
+        }
+
+        async function logout() {
+            try {
+                if (authToken) {
+                    await apiCall('/auth/logout', { method: 'POST' });
+                }
+            } catch (error) {}
+            finally {
+                authToken = null;
+                currentUser = null;
+                localStorage.removeItem('auth_token');
+                cartCount = 0;
+                updateCartBadge();
+                showToast('Chiqildi!', 'success');
+                showPage('home');
+            }
+        }
+
+        // Data Loading Functions
+        async function loadCategories() {
+            try {
+                const response = await apiCall('/categories/main');
+                const categories = response.data;
+                renderCategories(categories);
+            } catch (error) {}
+        }
+
+        async function loadFeaturedProducts() {
+            try {
+                const response = await apiCall('/products/featured');
+                const products = response.data;
+                renderProducts(products, 'featuredProducts');
+            } catch (error) {}
+        }
+
+        async function loadProducts(categoryId = null, search = null) {
+            try {
+                let endpoint = '/products';
+                const params = new URLSearchParams();
+                if (categoryId) params.append('category_id', categoryId);
+                if (search) params.append('search', search);
+                if (params.toString()) endpoint += '?' + params.toString();
+                const response = await apiCall(endpoint);
+                const products = response.data;
+                renderProducts(products, 'productsGrid');
+            } catch (error) {}
+        }
+
+        async function loadCartCount() {
+            if (!authToken) return;
+            try {
+                const response = await apiCall('/cart');
+                cartCount = response.data.items_count || 0;
+                updateCartBadge();
+            } catch (error) {}
+        }
+
+        async function loadCart() {
+            if (!authToken) {
+                document.getElementById('cartItems').innerHTML = '<p>Savatcha ko\'rish uchun kirish kerak</p>';
+                document.getElementById('cartSummary').innerHTML = '';
+                return;
+            }
+            try {
+                const response = await apiCall('/cart');
+                const cartData = response.data;
+                renderCart(cartData);
+            } catch (error) {}
+        }
+
+        async function loadUserProfile() {
+            if (!authToken) return;
+            try {
+                const response = await apiCall('/auth/me');
+                currentUser = response.data.user;
+            } catch (error) { throw error; }
+        }
+
+        async function loadOrders() {
+            if (!authToken) {
+                document.getElementById('ordersList').innerHTML = '<p>Buyurtmalarni ko\'rish uchun kirish kerak</p>';
+                return;
+            }
+            try {
+                const response = await apiCall('/orders');
+                const orders = response.data;
+                renderOrders(orders);
+            } catch (error) {}
+        }
+
+        // Render Functions -- (css/html qismlari siz berganingizdan olingan)
+        function renderCategories(categories) {
+            const container = document.getElementById('categoriesGrid');
+            const categoryIcons = ['🍎', '👔', '📱', '🏠', '⚽', '📚', '🎵', '🚗'];
+            container.innerHTML = categories.map((category, index) => `
+                <div class="category-card" onclick="showCategoryProducts(${category.id})">
+                    <div class="category-icon">${categoryIcons[index % categoryIcons.length]}</div>
+                    <h3>${category.name}</h3>
+                    <p>${category.products_count} mahsulot</p>
+                </div>
+            `).join('');
+        }
+
+        function renderProducts(products, containerId) {
+            const container = document.getElementById(containerId);
+            if (!products || products.length === 0) {
+                container.innerHTML = '<p>Mahsulotlar topilmadi</p>';
+                return;
+            }
+            container.innerHTML = products.map(product => `
+                <div class="product-card" onclick="showProductDetail(${product.id})">
+                    <div class="product-image">
+                        ${product.images && product.images.length > 0 ? 
+                            `<img src="${product.images[0].url}" alt="${product.name}" style="width: 100%; height: 100%; object-fit: cover;">` : 
+                            `<i class="fas fa-image"></i>`
+                        }
+                    </div>
+                    <div class="product-info">
+                        <h3 class="product-title">${product.name}</h3>
+                        <div class="product-price">
+                            <span class="current-price">${formatPrice(product.current_price)}</span>
+                            ${product.discount_price ? `<span class="original-price">${formatPrice(product.price)}</span>` : ''}
+                            ${product.discount_percentage > 0 ? `<span class="discount-badge">-${product.discount_percentage}%</span>` : ''}
+                        </div>
+                        <div class="product-rating">
+                            <div class="stars">${renderStars(product.rating_average)}</div>
+                            <span>(${product.rating_count})</span>
+                        </div>
+                        <button class="btn btn-primary btn-block" onclick="event.stopPropagation(); addToCart(${product.id})">
+                            <i class="fas fa-cart-plus"></i> Savatga qo'shish
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderCart(cartData) {
+            const itemsContainer = document.getElementById('cartItems');
+            const summaryContainer = document.getElementById('cartSummary');
+            if (!cartData.items || cartData.items.length === 0) {
+                itemsContainer.innerHTML = '<p>Savatcha bo\'sh</p>';
+                summaryContainer.innerHTML = '';
+                return;
+            }
+            itemsContainer.innerHTML = cartData.items.map(item => `
+                <div class="cart-item">
+                    <div class="cart-item-image">
+                        ${item.product.images && item.product.images.length > 0 ? 
+                            `<img src="${item.product.images[0].url}" alt="${item.product.name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;">` : 
+                            `<i class="fas fa-image"></i>`
+                        }
+                    </div>
+                    <div class="cart-item-info">
+                        <h4>${item.product.name}</h4>
+                        <p class="current-price">${formatPrice(item.price)}</p>
+                        <div class="quantity-controls">
+                            <button class="quantity-btn" onclick="updateCartQuantity(${item.id}, ${item.quantity - 1})">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                            <span style="padding: 0 1rem;">${item.quantity}</span>
+                            <button class="quantity-btn" onclick="updateCartQuantity(${item.id}, ${item.quantity + 1})">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="current-price">${formatPrice(item.total)}</p>
+                        <button class="btn" onclick="removeFromCart(${item.id})" style="background: var(--danger-color); color: white; padding: 0.5rem;">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            summaryContainer.innerHTML = `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                    <span>Jami:</span>
+                    <span class="current-price" style="font-size: 1.5rem;">${formatPrice(cartData.total_amount)}</span>
+                </div>
+                <button class="btn btn-primary btn-block" onclick="proceedToCheckout()">
+                    <i class="fas fa-credit-card"></i> Buyurtma berish
+                </button>
+                <button class="btn btn-outline btn-block" onclick="clearCart()" style="margin-top: 0.5rem;">
+                    <i class="fas fa-trash"></i> Savatchani tozalash
+                </button>
+            `;
+        }
+
+        function renderOrders(orders) {
+            const container = document.getElementById('ordersList');
+            if (!orders || orders.length === 0) {
+                container.innerHTML = '<p>Buyurtmalar yo\'q</p>';
+                return;
+            }
+            container.innerHTML = orders.map(order => `
+                <div style="background: white; padding: 1rem; border-radius: 12px; margin-bottom: 1rem; box-shadow: var(--shadow);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h4>Buyurtma #${order.order_number}</h4>
+                        <span class="status-badge status-${order.status}">${order.status_label}</span>
+                    </div>
+                    <p><strong>Jami:</strong> ${formatPrice(order.total_amount)}</p>
+                    <p><strong>Sana:</strong> ${formatDate(order.created_at)}</p>
+                    <p><strong>Mahsulotlar:</strong> ${order.items.length} ta</p>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <button class="btn btn-outline" onclick="showOrderDetail(${order.id})">Batafsil</button>
+                        ${order.can_be_cancelled ? `<button class="btn" onclick="cancelOrder(${order.id})" style="background: var(--danger-color); color: white;">Bekor qilish</button>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderProfile() {
+            const container = document.getElementById('profileContent');
+            if (!authToken) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 2rem;">
+                        <h3>Profilni ko'rish uchun kirish kerak</h3>
+                        <button class="btn btn-primary" onclick="showLogin()">Kirish</button>
+                    </div>
+                `;
+                return;
+            }
+            container.innerHTML = `
+                <div style="background: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; text-align: center;">
+                    <div style="width: 80px; height: 80px; background: var(--primary-color); border-radius: 50%; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem;">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <h3>${currentUser?.name || 'User'}</h3>
+                    <p>${currentUser?.email || ''}</p>
+                    <p>${currentUser?.phone || ''}</p>
+                </div>
+                <div style="background: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem;">
+                    <h4 style="margin-bottom: 1rem;">Menyular</h4>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <button class="btn btn-outline" onclick="showPage('orders')">
+                            <i class="fas fa-clipboard-list"></i> Buyurtmalarim
+                        </button>
+                        <button class="btn btn-outline" onclick="showAddresses()">
+                            <i class="fas fa-map-marker-alt"></i> Manzillarim
+                        </button>
+                        <button class="btn btn-outline" onclick="showSettings()">
+                            <i class="fas fa-cog"></i> Sozlamalar
+                        </button>
+                        <button class="btn" onclick="logout()" style="background: var(--danger-color); color: white;">
+                            <i class="fas fa-sign-out-alt"></i> Chiqish
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Cart Functions
+        async function addToCart(productId, quantity = 1) {
+            if (!authToken) { showLogin(); return; }
+            try {
+                await apiCall('/cart', {
+                    method: 'POST',
+                    body: JSON.stringify({ product_id: productId, quantity })
+                });
+                showToast('Mahsulot savatga qo\'shildi!', 'success');
+                await loadCartCount();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function updateCartQuantity(cartItemId, newQuantity) {
+            if (newQuantity <= 0) { await removeFromCart(cartItemId); return; }
+            try {
+                await apiCall(`/cart/${cartItemId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ quantity: newQuantity })
+                });
+                await loadCart();
+                await loadCartCount();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function removeFromCart(cartItemId) {
+            try {
+                await apiCall(`/cart/${cartItemId}`, { method: 'DELETE' });
+                showToast('Mahsulot savatdan olib tashlandi', 'success');
+                await loadCart();
+                await loadCartCount();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function clearCart() {
+            try {
+                await apiCall('/cart', { method: 'DELETE' });
+                showToast('Savatcha tozalandi', 'success');
+                await loadCart();
+                await loadCartCount();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        // Navigation Functions
+        function showPage(pageName) {
+            document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
+            document.getElementById(`${pageName}Page`).classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            if (event && event.target.closest('.nav-item'))
+                event.target.closest('.nav-item').classList.add('active');
+            switch(pageName) {
+                case 'cart': loadCart(); break;
+                case 'orders': loadOrders(); break;
+                case 'profile': renderProfile(); break;
+                case 'products': loadProducts(); break;
+            }
+        }
+
+        function showCategoryProducts(categoryId) {
+            showPage('products');
+            loadProducts(categoryId);
+        }
+
+        function showProductDetail(productId) {
+            showToast('Mahsulot batafsil sahifasi (keyingi versiyada)', 'info');
+        }
+
+        function showLogin() {
+            closeModal();
+            document.getElementById('loginModal').classList.add('active');
+        }
+
+        function showRegister() {
+            closeModal();
+            document.getElementById('registerModal').classList.add('active');
+        }
+
+        function showProfile() {
+            if (!authToken) { showLogin(); return; }
+            showPage('profile');
+        }
+
+        function showCart() {
+            if (!authToken) { showLogin(); return; }
+            showPage('cart');
+        }
+
+        function closeModal() {
+            document.querySelectorAll('.modal').forEach(modal => modal.classList.remove('active'));
+        }
+
+        // Search Function
+        function handleSearch(e) {
+            const query = e.target.value.trim();
+            if (query.length > 2) {
+                showPage('products');
+                loadProducts(null, query);
+            }
+        }
+
+        // Utility Functions
+        function formatPrice(price) {
+            return new Intl.NumberFormat('uz-UZ', {
+                style: 'currency', currency: 'UZS', minimumFractionDigits: 0
+            }).format(price);
+        }
+        function formatDate(dateString) {
+            return new Date(dateString).toLocaleDateString('uz-UZ');
+        }
+        function renderStars(rating) {
+            if (!rating) return '☆☆☆☆☆';
+            const fullStars = Math.floor(rating);
+            const halfStar = rating % 1 >= 0.5;
+            const emptyStars = 5 - fullStars - (halfStar ? 1 : 0);
+            return '★'.repeat(fullStars) + (halfStar ? '☆' : '') + '☆'.repeat(emptyStars);
+        }
+        function updateCartBadge() {
+            document.getElementById('cartBadge').textContent = cartCount;
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+                    ${message}
+                </div>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 100);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function showLoading(message = 'Yuklanmoqda...') {
+            const loading = document.createElement('div');
+            loading.id = 'loadingOverlay';
+            loading.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                display: flex; align-items: center; justify-content: center;
+                z-index: 2000; color: white; font-size: 1.2rem;`;
+            loading.innerHTML = `
+                <div style="text-align: center;">
+                    <div class="spinner"></div>
+                    ${message}
+                </div>
+            `;
+            document.body.appendChild(loading);
+        }
+        function hideLoading() {
+            const loading = document.getElementById('loadingOverlay');
+            if (loading) loading.remove();
+        }
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        // Placeholder functions for features
+        function proceedToCheckout() {
+            showToast('Checkout funksiyasi keyingi versiyada qo\'shiladi', 'info');
+        }
+        function showOrderDetail(orderId) {
+            showToast('Buyurtma batafsil sahifasi keyingi versiyada qo\'shiladi', 'info');
+        }
+        function cancelOrder(orderId) {
+            showToast('Buyurtmani bekor qilish keyingi versiyada qo\'shiladi', 'info');
+        }
+        function showAddresses() {
+            showToast('Manzillar boshqaruvi keyingi versiyada qo\'shiladi', 'info');
+        }
+        function showSettings() {
+            showToast('Sozlamalar keyingi versiyada qo\'shiladi', 'info');
+        }
+    </script>
+    <!-- <script>
         // API Configuration
         const API_BASE_URL = 'http://127.0.0.1:8000/api/v1';
         let authToken = localStorage.getItem('auth_token');
@@ -1374,6 +1923,6 @@
         function showSettings() {
             showToast('Sozlamalar keyingi versiyada qo\'shiladi', 'info');
         }
-    </script>
+    </script> -->
 </body>
 </html>
